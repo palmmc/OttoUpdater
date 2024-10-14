@@ -1,4 +1,4 @@
-<img src="./images/badge.png?raw=true" width="128">
+<a href="../../"><img src="./images/badge.png?raw=true" width="128"></a><br>
 <div align="left">
   
 [![view - Documentation](https://img.shields.io/badge/Developers-Click_Here-red?style=for-the-badge)](../../wiki/For-Developers "Go to project documentation")
