@@ -8,6 +8,9 @@ from endstone.command import Command, CommandSender
 from endstone.event import event_handler
 from endstone.plugin import Plugin
 import requests
+import os
+import shutil
+import json
 
 
 class OttoUpdater(Plugin):
@@ -17,6 +20,8 @@ class OttoUpdater(Plugin):
 
     def on_enable(self) -> None:
         self.register_events(self)
+
+    updateCount = 0
 
     def on_load(self):
         # Get github urls.
@@ -53,7 +58,8 @@ class OttoUpdater(Plugin):
             """
         )
         # Check for updates
-        if len(plugins) == 0:
+        self.updateCount = len(plugins)
+        if self.updateCount == 0:
             self.logger.info(
                 f"{ColorFormat.BOLD}Looks like you're all caught up!{ColorFormat.RESET}"
             )
@@ -62,16 +68,32 @@ class OttoUpdater(Plugin):
             )
         else:
             self.logger.info(
-                f"{ColorFormat.BOLD}Updates available: {ColorFormat.DARK_GRAY}({ColorFormat.RED}{len(plugins)}{ColorFormat.DARK_GRAY}){ColorFormat.RESET}"
+                f"{ColorFormat.BOLD}Updates available: {ColorFormat.DARK_GRAY}({ColorFormat.RED}{self.updateCount}{ColorFormat.DARK_GRAY}){ColorFormat.RESET}"
             )
         for plugin in plugins:
             latest_version = plugin["latest_version"]
             local_version = plugin["version"]
+            name = plugin["url"].split("/")[4]
             self.logger.info(
-                f"{ColorFormat.GREEN}Update available for {ColorFormat.LIGHT_PURPLE}{plugin["url"].split("/")[4]}{ColorFormat.GREEN}: {ColorFormat.MATERIAL_DIAMOND}{local_version} {ColorFormat.WHITE}-> {ColorFormat.DARK_AQUA}{latest_version}{ColorFormat.RESET}"
+                f"{ColorFormat.GREEN}Update available for {ColorFormat.LIGHT_PURPLE}{name}{ColorFormat.GREEN}: {ColorFormat.MATERIAL_DIAMOND}{local_version} {ColorFormat.WHITE}-> {ColorFormat.DARK_AQUA}{latest_version}{ColorFormat.RESET}"
             )
             self.logger.info(
-                f" > {ColorFormat.MINECOIN_GOLD}Get it now at {ColorFormat.BLUE}{plugin["url"]}/releases/latest{ColorFormat.RESET}"
+                f" > {ColorFormat.MINECOIN_GOLD}Found at {ColorFormat.BLUE}{plugin["url"]}/releases/latest{ColorFormat.RESET}"
+            )
+            self.logger.info(
+                f"{ColorFormat.ITALIC}{ColorFormat.MATERIAL_REDSTONE}Attempting to update automagically...{ColorFormat.RESET}"
+            )
+            download_url = self.get_download_url(plugin)
+            if not download_url:
+                self.logger.error(f"Failed to fetch download for {name}.")
+                continue
+            self.logger.info(
+                f"{ColorFormat.DARK_BLUE}Found matching file.{ColorFormat.RESET}"
+            )
+            new_path = self.download_file(download_url, self.pluginsPath)
+            self.replace_old_file(new_path)
+            self.logger.info(
+                f"{ColorFormat.GREEN}Update successful: {ColorFormat.LIGHT_PURPLE}{name}{ColorFormat.GREEN}!{ColorFormat.RESET}"
             )
 
     def get_latest_release(self, url: str) -> str:
@@ -88,3 +110,66 @@ class OttoUpdater(Plugin):
         except Exception as e:
             self.logger.error(f"Failed to fetch latest release for {url}: {e}")
             return None
+
+    pluginsPath = os.path.abspath("./plugins/")
+
+    def get_download_url(self, plugin):
+        parts = plugin["url"].split("/")
+        owner = parts[3]
+        repo = parts[4]
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+        response = requests.get(api_url)
+        response.raise_for_status()
+        result = response.json()
+        response2 = requests.get(result["assets_url"])
+        response2.raise_for_status()
+        result = response2.json()
+        resultUrl = result[0]["browser_download_url"]
+        if resultUrl.endswith(".whl"):
+            return resultUrl
+        else:
+            return None
+
+    def download_file(self, url, dest_folder):
+        if not os.path.exists(dest_folder):
+            os.makedirs(dest_folder)
+
+        # Download the file
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        filename = url.split("/")[-1]
+
+        file_path = os.path.join(dest_folder, filename)
+
+        # Save the downloaded file
+        with open(file_path, "wb") as file:
+            shutil.copyfileobj(response.raw, file)
+
+        return file_path
+
+    def replace_old_file(self, new_file_path):
+        # Find and delete the old file
+        old_file_path = None
+        for file in os.listdir(self.pluginsPath):
+            if file.endswith(".whl"):
+                old_file_path = os.path.join(self.pluginsPath, file)
+                break
+
+        if old_file_path and os.path.exists(old_file_path):
+            os.remove(old_file_path)
+
+        # Move the new file to the directory
+        shutil.move(
+            new_file_path,
+            os.path.join(self.pluginsPath, os.path.basename(new_file_path)),
+        )
+
+    @event_handler
+    def on_enable(self) -> None:
+        if self.updateCount > 0:
+            self.logger.info(
+                f"{ColorFormat.BOLD}{ColorFormat.RED}{self.updateCount} {ColorFormat.GRAY}updates applied.{ColorFormat.RESET}"
+            )
+            self.logger.info(
+                f"{ColorFormat.YELLOW}Please run {ColorFormat.GOLD}/reload {ColorFormat.YELLOW}or re-launch for changes to take effect.{ColorFormat.RESET}"
+            )
