@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling<=1.18.0"]  
+build-backend = "hatchling.build"
+
+[project]
+name = "endstone_ottoupdater"
+version = "0.1.0"
+dependencies = []
+authors = [
+    { name = "palm1" },
+]
+description = "Endstone plugin updater."
+readme = "README.md"
+license = { file = "LICENSE" }
+keywords = ["endstone", "plugin", "updater", "server"]
+
+[project.urls]
+Homepage = ""
+
+[project.entry-points."endstone"]
+ottoupdater = "endstone_ottoupdater:OttoUpdater"
